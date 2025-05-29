@@ -1,5 +1,5 @@
 [project]
-name = "adm_class_zmrocze"
+name = "adm_recsys"
 version = "2020.0.0"
 # description = "Lovely Spam! Wonderful Spam!"
 # readme = "README.rst"
@@ -10,7 +10,6 @@ dependencies = [
   "ipython",
   "ipykernel",
   "matplotlib",
-  
   # "scipy",
   # "scikit-learn",
   # "optuna",
