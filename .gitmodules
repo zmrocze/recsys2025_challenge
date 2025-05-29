@@ -1,0 +1,3 @@
+[submodule "recsys2025"]
+	path = recsys2025
+	url = https://github.com/Synerise/recsys2025.git
