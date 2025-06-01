@@ -10,6 +10,7 @@ dependencies = [
   "ipython",
   "ipykernel",
   "matplotlib",
+  "torchdata",
   # "scipy",
   # "scikit-learn",
   # "optuna",
