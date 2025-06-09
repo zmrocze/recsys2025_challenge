@@ -3,6 +3,7 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import pandas as pd
 
 # Helper function to calculate interaction statistics
 def calculate_interaction_stats(df, interaction_name):
@@ -27,6 +28,7 @@ def calculate_interaction_stats(df, interaction_name):
     stats.update({
       'unique_products': df['sku'].nunique(),
       'product_interactions': products_per_user.sum(),
+      'product_interaction_sparsity': 1 - (products_per_user.sum() / (len(products_per_user) * df['sku'].nunique())),
       'avg_products_per_user': products_per_user.mean(),
       'avg_products_squared_per_user': (products_per_user ** 2).mean(),
       'min_products_per_user': products_per_user.min(),
@@ -101,6 +103,7 @@ class RecSysData:
     all_products = set(self.add_to_cart['sku']).union(
         set(self.product_buy['sku']),
         set(self.remove_from_cart['sku']),
+        # set(self.product_properties['sku']),
     )
     return all_products
 
@@ -129,9 +132,20 @@ class RecSysData:
     self.add_to_cart.to_parquet(os.path.join(dir_path, 'add_to_cart.parquet'), index=False)
     self.page_visit.to_parquet(os.path.join(dir_path, 'page_visit.parquet'), index=False)
     self.product_buy.to_parquet(os.path.join(dir_path, 'product_buy.parquet'), index=False)
+    self.product_properties.to_parquet(os.path.join(dir_path, 'product_properties.parquet'), index=False)
     self.remove_from_cart.to_parquet(os.path.join(dir_path, 'remove_from_cart.parquet'), index=False)
     self.search_query.to_parquet(os.path.join(dir_path, 'search_query.parquet'), index=False)
   
+  @staticmethod
+  def read_parquet(dir_path):
+    add_to_cart = pd.read_parquet(os.path.join(dir_path, 'add_to_cart.parquet'))
+    page_visit = pd.read_parquet(os.path.join(dir_path, 'page_visit.parquet'))
+    product_buy = pd.read_parquet(os.path.join(dir_path, 'product_buy.parquet'))
+    product_properties = pd.read_parquet(os.path.join(dir_path, 'product_properties.parquet'))
+    remove_from_cart = pd.read_parquet(os.path.join(dir_path, 'remove_from_cart.parquet'))
+    search_query = pd.read_parquet(os.path.join(dir_path, 'search_query.parquet'))
+    return RecSysData(add_to_cart, page_visit, product_buy, product_properties, remove_from_cart, search_query)
+
   def print_datasets_stats_nicely(self, title_name):
     # Calculate statistics for all datasets
     title_name = title_name.upper()
@@ -157,6 +171,7 @@ class RecSysData:
       if 'unique_products' in stats:
         print(f"  Unique products: {stats['unique_products']:,}")
         print(f"  Product interactions: {stats['product_interactions']:,}")
+        print(f"  Product interaction sparsity: {stats['product_interaction_sparsity']:.16f}")
         print(f"  Average products per user: {stats['avg_products_per_user']:.2f}")
         print(f"  Average products squared per user: {stats['avg_products_squared_per_user']:.2f}")
         print(f"  Min products per user: {stats['min_products_per_user']}")
