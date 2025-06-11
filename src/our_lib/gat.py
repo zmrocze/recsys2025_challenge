@@ -303,7 +303,7 @@ def create_target_from_edge_index(node_id_map, n_users, propensity_items, edge_i
   return target
 
 class BprTraining(pl.LightningModule):
-  def __init__(self, recgat, edge_predictor, lr=0.001, propensity_sku=propensity_sku, full_test_target=None):
+  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, full_test_target=None):
     super(BprTraining, self).__init__()
     self.recgat = recgat
     self.changed = True
