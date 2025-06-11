@@ -93,6 +93,15 @@ class RecGAT(JustGAT):
     # self.edge_weights = torch.empty((0, ), dtype=torch.float, device=device)
     self.edge_weight = None
 
+  def reinit_weights(self, a=1.0, type='normal'):
+    if type == 'normal':
+      self.node_embeddings.weight.data.normal_(0, a)
+    elif type == 'uniform':
+      self.node_embeddings.weight.data.uniform_(-a, a)
+    else:
+      raise ValueError(f"Unknown weight initialization type: {type}. Use 'normal' or 'uniform'.")
+    self.gat.reset_parameters()
+
   def add_edges(self, users, items, edge_attr=None, edge_weight=None):
     edge_index = self.node_id_map.make_edges(users, items).to(device=device)
     edge_index = torch.concat((self.edge_index, edge_index), dim=1)
@@ -184,12 +193,12 @@ class LinearEdgePredictor(torch.nn.Module):
     self.init_weights()
 
   def init_weights(self, a = 1.0, type='normal'):
-    range = (a * -1.0, a * 1.0)
     if type == 'normal':
-      self.a.data.normal_(*range)
-      self.Ws.data.normal_(*range)
-      self.Wt.data.normal_(*range)
+      self.a.data.normal_(0, a)
+      self.Ws.data.normal_(0, a)
+      self.Wt.data.normal_(0, a)
     elif type == 'uniform':
+      range = (a * -1.0, a * 1.0)
       self.a.data.uniform_(*range)
       self.Ws.data.uniform_(*range)
       self.Wt.data.uniform_(*range)
@@ -364,7 +373,7 @@ class BprTraining(pl.LightningModule):
   # helpers
 
   def reinit_weights(self, a=1.0, type='normal'):
-    self.recgat.reset_weights()
+    self.recgat.reinit_weights(a=a, type=type)
     self.edge_predictor.init_weights(a=a, type=type)
   
   # returns scores
