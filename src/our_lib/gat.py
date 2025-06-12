@@ -21,12 +21,13 @@ class NodeIdMap:
   def make_edges(self, users, items):
     user_ids = np.array([self.id_of_user[u] for u in users], dtype=np.long)
     item_ids = np.array([self.id_of_item[i] for i in items], dtype=np.long)
-    return torch.tensor(np.stack((user_ids, item_ids), axis=0), dtype=torch.long)
+    return torch.tensor(np.stack((user_ids, item_ids), axis=0), dtype=torch.long, device=device)
 
 
 embedding_dim = 128
 dropout=0.2
-heads = 8
+# heads = 8
+heads = 1 # in the end maybe better to increase dimension than add more heads?
 
 class JustGAT(torch.nn.Module):
 
@@ -161,8 +162,8 @@ class DotproductEdgePredictor(torch.nn.Module):
   """
   def __init__(self, emb_dim):
     super(DotproductEdgePredictor, self).__init__()
-    self.Ws = torch.nn.Parameter(torch.Tensor(emb_dim, emb_dim))
-    self.Wt = torch.nn.Parameter(torch.Tensor(emb_dim, emb_dim))
+    self.Ws = torch.nn.Parameter(torch.Tensor(emb_dim, emb_dim)).to(device=device)
+    self.Wt = torch.nn.Parameter(torch.Tensor(emb_dim, emb_dim)).to(device=device)
     
   def forward(self, user_emb, item_emb):
     """
@@ -185,10 +186,10 @@ class LinearEdgePredictor(torch.nn.Module):
     super(LinearEdgePredictor, self).__init__()
     if hidden_dim is None:
       hidden_dim = embedding_dim
-    self.Ws = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim))
-    self.Wt = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim))
+    self.Ws = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim)).to(device=device)
+    self.Wt = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim)).to(device=device)
     self.relu = torch.nn.LeakyReLU(negative_slope=0.01)
-    self.a = torch.nn.Parameter(torch.Tensor(1, hidden_dim))    
+    self.a = torch.nn.Parameter(torch.Tensor(1, hidden_dim)).to(device=device)
     self.dropout = torch.nn.Dropout(p=dropout)
     self.init_weights()
 
@@ -309,15 +310,15 @@ def create_target_from_edge_index(node_id_map, n_users, propensity_items, edge_i
     item = node_id_map.item_of_id[edge_index[1, i].item()]
     if item in ind:
       target[user_id, ind[item]] = 1
-  return target
+  return target.to(device=device)
 
 class BprTraining(pl.LightningModule):
-  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, full_test_target=None):
+  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, full_test_target=None, device=device):
     super(BprTraining, self).__init__()
-    self.recgat = recgat
+    self.recgat = recgat.to(device=device)
     self.changed = True
     self._val_auroc_target = None
-    self.edge_predictor = edge_predictor
+    self.edge_predictor = edge_predictor.to(device=device)
     self.propensity_sku = propensity_sku
     self.lr = lr
     self.full_test_target = full_test_target
@@ -334,7 +335,7 @@ class BprTraining(pl.LightningModule):
   # calculate (based on val_loader) only first time its needed
   def get_val_auroc_target(self, user_id, item_id):
     if self._val_auroc_target is None:
-      edge_index = torch.stack((user_id, item_id))
+      edge_index = torch.stack((user_id, item_id), device=device)
       self._val_auroc_target = create_target_from_edge_index(self.recgat.node_id_map, self.recgat.node_id_map.n_users, self.propensity_sku, edge_index)
     return self._val_auroc_target
     
