@@ -327,6 +327,7 @@ class BprTraining(pl.LightningModule):
     self.full_test_target = full_test_target
     self._changed = True
     self._forward_skipped_n = 0
+    self._first_forward = True
     self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
 
   # in principle whole epoch loss can be calculated after a single forward pass that updates the final layer embeddings
@@ -335,6 +336,13 @@ class BprTraining(pl.LightningModule):
   # We recalculate every self.forward_gat_every_n.
   def get_final_layer_embeddings(self):
     # Recalculate every self.forward_gat_every_n backwards passes
+    if self._first_forward:
+      self._first_forward = False
+      user_emb, item_emb = self.recgat.forward()
+      self._user_emb = user_emb
+      self._item_emb = item_emb
+      return self._user_emb, self._item_emb
+    
     if self._changed and self._forward_skipped_n >= self.forward_gat_every_n:
       user_emb, item_emb = self.recgat.forward()
       self._user_emb = user_emb
