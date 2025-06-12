@@ -330,7 +330,8 @@ def create_target_from_edge_index(node_id_map, n_users, propensity_items, edge_i
 class BprTraining(pl.LightningModule):
   def __init__(self, recgat, edge_predictor, propensity_sku, 
     lr=0.001, l2_reg=0.01, full_test_target=None, device=device, 
-    forward_gat_every_n=1, patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
+    # forward_gat_every_n=1, 
+    patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
     super(BprTraining, self).__init__()
     self.patience = patience
     self.factor = factor
@@ -342,31 +343,23 @@ class BprTraining(pl.LightningModule):
     self.lr = lr
     self.full_test_target = full_test_target
     self._changed = True
-    self._forward_skipped_n = 0
-    self._first_forward = True
+    # self._forward_skipped_n = 0
+    # self._first_forward = True
     self.l2_reg = l2_reg
-    self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
+    # self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
 
   # in principle whole epoch loss can be calculated after a single forward pass that updates the final layer embeddings
   # maybe could try it: but this risks not training well (would need low learning rate to keep stable (todo: test it))
   # on other hand recalculating every batch is costly
   # We recalculate every self.forward_gat_every_n.
+  # ! 2 forwards per epoch (pos and neg)
   def get_final_layer_embeddings(self):
     # Recalculate every self.forward_gat_every_n backwards passes
-    if self._first_forward:
-      self._first_forward = False
+    if self._changed:
       user_emb, item_emb = self.recgat.forward()
       self._user_emb = user_emb
       self._item_emb = item_emb
-      return self._user_emb, self._item_emb
-    
-    if self._changed and self._forward_skipped_n >= self.forward_gat_every_n:
-      user_emb, item_emb = self.recgat.forward()
-      self._user_emb = user_emb
-      self._item_emb = item_emb
-      self._changed = False
-      self._forward_skipped_n = 0
-    
+
     return self._user_emb, self._item_emb
 
   # calculate (based on val_loader) only first time its needed
@@ -378,8 +371,6 @@ class BprTraining(pl.LightningModule):
     
 
   def optimizer_step(self, *args, **kwargs):
-    self._changed = True # record that gat has to be recomputed
-    self._forward_skipped_n += 1
     return super().optimizer_step(*args, **kwargs)
 
   def training_step(self, batch, batch_idx):
@@ -390,6 +381,22 @@ class BprTraining(pl.LightningModule):
     self.log('train_loss', loss)
 
     return loss
+
+  def optimizer_step(
+        self,
+        epoch,
+        batch_idx,
+        optimizer,
+        optimizer_closure,
+    ) -> None:
+    # default
+    optimizer.step(closure=optimizer_closure)
+    # custom
+    self._changed = True
+
+  # def optimizer_zero_grad(self, epoch, batch_idx, optimizer) -> None:
+  #   # default
+  #   optimizer.zero_grad()
 
   def configure_optimizers(self):
     optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.l2_reg)
