@@ -225,7 +225,7 @@ class LinearEdgePredictor(torch.nn.Module):
 
     return  torch.sum( self.a * self.dropout(self.relu(user_proj + item_proj)), axis=len(item_emb.shape)-1)   # (batch_size, 1)
 
-def l2_reg(self, alpha=0.01):
+def l2_reg(self):
   i=0
   total = torch.zeros((1,), device=device)
   for p in self.parameters():
@@ -301,8 +301,14 @@ def unique_edges(df):
 
 def loss_f(gat, edge_predictor, pos_scores, neg_scores, l2_r=0.01):
   bpr_loss = torch.nn.functional.logsigmoid(pos_scores - neg_scores).mean()
-  loss = - bpr_loss + l2_reg(gat.node_embeddings, alpha=l2_r) + l2_reg(gat, alpha=l2_r) + l2_reg(edge_predictor, alpha=l2_r)
+  loss = - bpr_loss + l2_r * (l2_reg(gat.node_embeddings) + l2_reg(gat) + l2_reg(edge_predictor))
   return loss
+
+def loss_ff(gat, edge_predictor, pos_scores, neg_scores, l2_r=0.01):
+  bpr_loss = torch.nn.functional.logsigmoid(pos_scores - neg_scores).mean()
+  # loss =  + 
+  return (- bpr_loss), l2_r * (l2_reg(gat.node_embeddings) + l2_reg(gat) + l2_reg(edge_predictor))
+
 
 # to calculate AUROC we need a matrix (users, 100) of 1s and 0s whether edge is or isnt
 # we have list of edges. better do this once, not vectorized
@@ -317,7 +323,7 @@ def create_target_from_edge_index(node_id_map, n_users, propensity_items, edge_i
   return target.to(device=device)
 
 class BprTraining(pl.LightningModule):
-  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, full_test_target=None, device=device, forward_gat_every_n=1):
+  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, l2_reg=0.01, full_test_target=None, device=device, forward_gat_every_n=1):
     super(BprTraining, self).__init__()
     self.recgat = recgat.to(device=device)
     self._val_auroc_target = None
@@ -328,6 +334,7 @@ class BprTraining(pl.LightningModule):
     self._changed = True
     self._forward_skipped_n = 0
     self._first_forward = True
+    self.l2_reg = l2_reg
     self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
 
   # in principle whole epoch loss can be calculated after a single forward pass that updates the final layer embeddings
@@ -369,9 +376,13 @@ class BprTraining(pl.LightningModule):
     src_node, pos_trg_node, neg_trg_node = batch
     pos_scores = self.forward(src_node, pos_trg_node).view(-1, 1)
     neg_scores = self.forward(src_node.view(-1, 1), neg_trg_node)
-    loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores)
-
+    # loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
+    bpr_loss, l2_loss = loss_ff(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
+    loss = bpr_loss + self.l2_reg
     self.log('train_loss', loss)
+    self.log('train_bpr_loss', bpr_loss)
+    self.log('train_l2reg_loss', l2_loss)
+
     return loss
 
   def configure_optimizers(self):
@@ -381,8 +392,9 @@ class BprTraining(pl.LightningModule):
     src_node, pos_trg_node, neg_trg_node = batch
     pos_scores = self.forward(src_node, pos_trg_node).view(-1, 1)
     neg_scores = self.forward(src_node.view(-1, 1), neg_trg_node)
-    loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores)
-
+    # loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
+    bpr_loss, l2_loss = loss_ff(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
+    loss = bpr_loss + self.l2_reg
     # auroc = self.auroc_on_propensity(self.get_val_auroc_target(src_node, pos_trg_node)) # just pos_trg_node !
     
     if self.full_test_target is not None:
@@ -390,6 +402,8 @@ class BprTraining(pl.LightningModule):
       self.log("val_propensity_auroc", full_auroc)
 
     self.log("val_loss", loss)
+    self.log("val_l2reg_loss", l2_loss)
+    self.log("val_bpr_loss", bpr_loss)
     return loss
 
   # helpers
