@@ -190,10 +190,10 @@ class LinearEdgePredictor(torch.nn.Module):
     super(LinearEdgePredictor, self).__init__()
     if hidden_dim is None:
       hidden_dim = embedding_dim
-    self.Ws = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim)).to(device=device)
-    self.Wt = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim)).to(device=device)
+    self.Ws = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim))
+    self.Wt = torch.nn.Parameter(torch.Tensor(embedding_dim, hidden_dim))
     self.relu = torch.nn.LeakyReLU(negative_slope=0.01)
-    self.a = torch.nn.Parameter(torch.Tensor(1, hidden_dim)).to(device=device)
+    self.a = torch.nn.Parameter(torch.Tensor(1, hidden_dim))
     self.dropout = torch.nn.Dropout(p=dropout)
     self.init_weights()
 
