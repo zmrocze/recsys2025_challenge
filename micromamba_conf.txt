@@ -1,0 +1,10 @@
+ipython
+ipykernel
+jupyter
+matplotlib
+numpy 2.1
+wandb
+pandas 2.2.3
+pytorch
+pytorch-lightning
+pyg-lib

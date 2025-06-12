@@ -328,8 +328,13 @@ def create_target_from_edge_index(node_id_map, n_users, propensity_items, edge_i
   return target.to(device=device)
 
 class BprTraining(pl.LightningModule):
-  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, l2_reg=0.01, full_test_target=None, device=device, forward_gat_every_n=1):
+  def __init__(self, recgat, edge_predictor, propensity_sku, 
+    lr=0.001, l2_reg=0.01, full_test_target=None, device=device, 
+    forward_gat_every_n=1, patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
     super(BprTraining, self).__init__()
+    self.patience = patience
+    self.factor = factor
+    self.lr_scheduler_monitor = lr_scheduler_monitor
     self.recgat = recgat.to(device=device)
     self._val_auroc_target = None
     self.edge_predictor = edge_predictor.to(device=device)
@@ -381,19 +386,29 @@ class BprTraining(pl.LightningModule):
     src_node, pos_trg_node, neg_trg_node = batch
     pos_scores = self.forward(src_node, pos_trg_node).view(-1, 1)
     neg_scores = self.forward(src_node.view(-1, 1), neg_trg_node)
-    # loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
     loss = bpr_loss_f(pos_scores, neg_scores)
-    # loss = bpr_loss + self.l2_reg
     self.log('train_loss', loss)
-    # self.log('train_bpr_loss', bpr_loss)
-    # self.log('train_l2reg_loss', l2_loss)
 
     return loss
 
   def configure_optimizers(self):
+    optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.l2_reg)
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+      optimizer=optimizer,
+      patience=self.patience,
+      factor=self.factor,
+      cooldown=2,
+      verbose=True,
+    )
     return {
       # ! be worry: l2 loss applies to all parameters every optimizer epoch. but bpr_loss touches only some users and items
-      "optimizer": torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.l2_reg)
+      "optimizer": optimizer,
+      "lr_scheduler": {
+        "scheduler" : lr_scheduler,
+        "monitor": self.lr_scheduler_monitor,
+        "interval": "epoch",
+        "frequency": 1,
+      }
     }
 
   
