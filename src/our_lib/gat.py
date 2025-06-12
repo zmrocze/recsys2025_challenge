@@ -304,6 +304,11 @@ def loss_f(gat, edge_predictor, pos_scores, neg_scores, l2_r=0.01):
   loss = - bpr_loss + l2_r * (l2_reg(gat.node_embeddings) + l2_reg(gat) + l2_reg(edge_predictor))
   return loss
 
+def bpr_loss_f(pos_scores, neg_scores):
+  bpr_loss = torch.nn.functional.logsigmoid(pos_scores - neg_scores).mean()
+  loss = - bpr_loss
+  return loss
+
 def loss_ff(gat, edge_predictor, pos_scores, neg_scores, l2_r=0.01):
   bpr_loss = torch.nn.functional.logsigmoid(pos_scores - neg_scores).mean()
   # loss =  + 
@@ -377,24 +382,30 @@ class BprTraining(pl.LightningModule):
     pos_scores = self.forward(src_node, pos_trg_node).view(-1, 1)
     neg_scores = self.forward(src_node.view(-1, 1), neg_trg_node)
     # loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
-    bpr_loss, l2_loss = loss_ff(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
-    loss = bpr_loss + self.l2_reg
+    loss = bpr_loss_f(pos_scores, neg_scores)
+    # loss = bpr_loss + self.l2_reg
     self.log('train_loss', loss)
-    self.log('train_bpr_loss', bpr_loss)
-    self.log('train_l2reg_loss', l2_loss)
+    # self.log('train_bpr_loss', bpr_loss)
+    # self.log('train_l2reg_loss', l2_loss)
 
     return loss
 
   def configure_optimizers(self):
-    return torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=0.001)
+    return {
+      # ! be worry: l2 loss applies to all parameters every optimizer epoch. but bpr_loss touches only some users and items
+      "optimizer": torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.l2_reg)
+    }
+
   
   def validation_step(self, batch, batch_idx):
     src_node, pos_trg_node, neg_trg_node = batch
     pos_scores = self.forward(src_node, pos_trg_node).view(-1, 1)
     neg_scores = self.forward(src_node.view(-1, 1), neg_trg_node)
     # loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
-    bpr_loss, l2_loss = loss_ff(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
-    loss = bpr_loss + self.l2_reg
+    # bpr_loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores)
+    loss = bpr_loss_f(pos_scores, neg_scores)
+    # loss = bpr_loss
+    # + self.l2_reg
     # auroc = self.auroc_on_propensity(self.get_val_auroc_target(src_node, pos_trg_node)) # just pos_trg_node !
     
     if self.full_test_target is not None:
@@ -402,8 +413,8 @@ class BprTraining(pl.LightningModule):
       self.log("val_propensity_auroc", full_auroc)
 
     self.log("val_loss", loss)
-    self.log("val_l2reg_loss", l2_loss)
-    self.log("val_bpr_loss", bpr_loss)
+    # self.log("val_l2reg_loss", l2_loss)
+    # self.log("val_bpr_loss", bpr_loss)
     return loss
 
   # helpers
