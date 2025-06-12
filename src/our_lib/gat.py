@@ -31,7 +31,7 @@ heads = 1 # in the end maybe better to increase dimension than add more heads?
 
 class JustGAT(torch.nn.Module):
 
-  def __init__(self, n, embedding_dim=embedding_dim, edge_dim=None, device=device, heads=heads, dropout=0.2, a=1.0, type='normal'):
+  def __init__(self, n, embedding_dim=embedding_dim, edge_dim=None, device=device, heads=heads, dropout=0.2, a=1.0, type='normal', num_layers=2):
     super(JustGAT, self).__init__()
     self.embedding_dim = embedding_dim
     self.edge_dim = edge_dim
@@ -45,7 +45,7 @@ class JustGAT(torch.nn.Module):
       in_channels=self.embedding_dim, 
       hidden_channels=self.embedding_dim, 
       out_channels=None,
-      num_layers=2,
+      num_layers=num_layers,
       v2=True,
       dropout=dropout,
       # GATv2Conv
