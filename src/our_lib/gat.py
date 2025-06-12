@@ -31,13 +31,13 @@ heads = 1 # in the end maybe better to increase dimension than add more heads?
 
 class JustGAT(torch.nn.Module):
 
-  def __init__(self, n, embedding_dim=embedding_dim, edge_dim=None, device=device):
+  def __init__(self, n, embedding_dim=embedding_dim, edge_dim=None, device=device, heads=heads, dropout=0.2, a=1.0, type='normal'):
     super(JustGAT, self).__init__()
     self.embedding_dim = embedding_dim
     self.edge_dim = edge_dim
     self.n = n
     self.node_embeddings = torch.nn.Embedding(self.n, embedding_dim, device=device)
-    self.node_embeddings.weight.data.uniform_(-0.01, 0.01)
+    # self.node_embeddings.weight.data.uniform_(-0.01, 0.01)
     # self.target_embeddings = torch.nn.Embedding(M, embedding_dim, device=device)
     # v2=True, 
     # heads, concat, residual
@@ -54,6 +54,18 @@ class JustGAT(torch.nn.Module):
       edge_dim=self.edge_dim,
       # concat=
     ).to(device)
+    self.a = a
+    self.type = type
+    self.reinit_weights(a=self.a, type=self.type)
+
+  def reinit_weights(self, a=1.0, type='normal'):
+    if type == 'normal':
+      self.node_embeddings.weight.data.normal_(0, a)
+    elif type == 'uniform':
+      self.node_embeddings.weight.data.uniform_(-a, a)
+    else:
+      raise ValueError(f"Unknown weight initialization type: {type}. Use 'normal' or 'uniform'.")
+    self.gat.reset_parameters()
 
   def forward(self, edge_index, edge_weight=None, edge_attr=None):
     return self.gat.forward(
@@ -93,15 +105,6 @@ class RecGAT(JustGAT):
     self.edge_attr = None
     # self.edge_weights = torch.empty((0, ), dtype=torch.float, device=device)
     self.edge_weight = None
-
-  def reinit_weights(self, a=1.0, type='normal'):
-    if type == 'normal':
-      self.node_embeddings.weight.data.normal_(0, a)
-    elif type == 'uniform':
-      self.node_embeddings.weight.data.uniform_(-a, a)
-    else:
-      raise ValueError(f"Unknown weight initialization type: {type}. Use 'normal' or 'uniform'.")
-    self.gat.reset_parameters()
 
   def add_edges(self, users, items, edge_attr=None, edge_weight=None):
     edge_index = self.node_id_map.make_edges(users, items).to(device=device)
@@ -155,9 +158,10 @@ class RecGAT(JustGAT):
 # !! cant? because there can be more than one type of edge
 
 # gives number which correlates to the edge being there or not
+# Untested yet!
 class DotproductEdgePredictor(torch.nn.Module):
   """
-    Untested yet
+    Untested yet!!!
     Predicts the probability of an edge between user and item.
   """
   def __init__(self, emb_dim):
@@ -313,22 +317,30 @@ def create_target_from_edge_index(node_id_map, n_users, propensity_items, edge_i
   return target.to(device=device)
 
 class BprTraining(pl.LightningModule):
-  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, full_test_target=None, device=device):
+  def __init__(self, recgat, edge_predictor, propensity_sku, lr=0.001, full_test_target=None, device=device, forward_gat_every_n=1):
     super(BprTraining, self).__init__()
     self.recgat = recgat.to(device=device)
-    self.changed = True
     self._val_auroc_target = None
     self.edge_predictor = edge_predictor.to(device=device)
     self.propensity_sku = propensity_sku
     self.lr = lr
     self.full_test_target = full_test_target
+    self._changed = True
+    self._forward_skipped_n = 0
+    self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
 
+  # in principle whole epoch loss can be calculated after a single forward pass that updates the final layer embeddings
+  # maybe could try it: but this risks not training well (would need low learning rate to keep stable (todo: test it))
+  # on other hand recalculating every batch is costly
+  # We recalculate every self.forward_gat_every_n.
   def get_final_layer_embeddings(self):
-    if self.changed:
+    # Recalculate every self.forward_gat_every_n backwards passes
+    if self._changed and self._forward_skipped_n >= self.forward_gat_every_n:
       user_emb, item_emb = self.recgat.forward()
       self._user_emb = user_emb
       self._item_emb = item_emb
-      self.changed = False
+      self._changed = False
+      self._forward_skipped_n = 0
     
     return self._user_emb, self._item_emb
 
@@ -341,7 +353,8 @@ class BprTraining(pl.LightningModule):
     
 
   def optimizer_step(self, *args, **kwargs):
-    self.changed = True # record that gat has to be recomputed
+    self._changed = True # record that gat has to be recomputed
+    self._forward_skipped_n += 1
     return super().optimizer_step(*args, **kwargs)
 
   def training_step(self, batch, batch_idx):
