@@ -348,6 +348,12 @@ class BprTraining(pl.LightningModule):
     self.l2_reg = l2_reg
     # self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
 
+  def on_save_checkpoint(self, checkpoint):
+    checkpoint['my_node_id_map'] = self.recgat.node_id_map
+    user_emb, item_emb = self.get_final_layer_embeddings()
+    checkpoint['my_user_emb'] = user_emb
+    checkpoint['my_item_emb'] = item_emb
+
   # in principle whole epoch loss can be calculated after a single forward pass that updates the final layer embeddings
   # maybe could try it: but this risks not training well (would need low learning rate to keep stable (todo: test it))
   # on other hand recalculating every batch is costly
