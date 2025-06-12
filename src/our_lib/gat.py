@@ -112,7 +112,7 @@ class RecGAT(JustGAT):
     return self.add_edge_index(edge_index, edge_attr=edge_attr, edge_weight=edge_weight)
 
   def add_edge_index(self, edge_index, edge_attr=None, edge_weight=None):
-    self.edge_index = edge_index
+    self.edge_attr = torch.concat((self.edge_index, edge_index), axis=1, device=device)
     if edge_attr is not None:
       assert self.edge_dim is not None
       self._init_edge_attr()
