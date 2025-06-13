@@ -257,7 +257,8 @@ class BprLossLoader:
     Loads batches of positive and negative edges (just random) for BPR loss.
     Uses edge_index to sample negative edges.
   """
-  def __init__(self, edge_index, trg_index_range, batch_size=256, neg_samples=1, random_state=None, device=device):
+  def __init__(self, edge_index, trg_index_range, batch_size=256, neg_samples=1, random_state=None, device=device, sample_neg_from_all=False):
+    self.sample_neg_from_all = sample_neg_from_all
     self.edge_index = edge_index
     self.batch_size = batch_size
     self.neg_samples = neg_samples
@@ -279,10 +280,13 @@ class BprLossLoader:
       # pos_edges = self.edge_index[:, pos_indices]
       src_node = self.edge_index[0, pos_indices]
       pos_trg_node = self.edge_index[1, pos_indices]
-      neg_trg_node = self.target_index_range[0] + np.random.choice( 
-          self.target_index_range[1] - self.target_index_range[0] ,
-          size=(self.neg_samples * pos_indices.shape[0],), replace=True
-        )
+      if self.sample_neg_from_all:
+        neg_trg_node = self.target_index_range[0] + np.random.choice( 
+            self.target_index_range[1] - self.target_index_range[0] ,
+            size=(self.neg_samples * pos_indices.shape[0],), replace=True
+          )
+      else:
+        neg_trg_node = np.random.choice(pos_trg_node, size=(self.neg_samples * pos_indices.shape[0],), replace=True)
       
       yield src_node.to(device=self.device), \
             pos_trg_node.to(device=self.device), \
