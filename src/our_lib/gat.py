@@ -285,13 +285,14 @@ class BprLossLoader:
             self.target_index_range[1] - self.target_index_range[0] ,
             size=(self.neg_samples * pos_indices.shape[0],), replace=True
           )
+        neg_trg_node = int_tensor(neg_trg_node, device=self.device)
       else:
         neg_trg_node_ind = np.random.choice(np.arange(0, pos_trg_node.shape[0]), size=(self.neg_samples * pos_indices.shape[0],), replace=True)
         neg_trg_node = pos_trg_node[neg_trg_node_ind]
       
       yield src_node.to(device=self.device), \
             pos_trg_node.to(device=self.device), \
-            int_tensor(neg_trg_node, device=self.device).view(-1, self.neg_samples)
+            neg_trg_node.view(-1, self.neg_samples)
   
   def __len__(self):
     return (self.num_edges + self.batch_size - 1) // self.batch_size  # ceil division
