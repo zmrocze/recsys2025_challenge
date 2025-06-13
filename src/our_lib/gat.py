@@ -438,6 +438,8 @@ class BprTraining(pl.LightningModule):
     # loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
     # bpr_loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores)
     loss = bpr_loss_f(pos_scores, neg_scores)
+    l2_reg_loss = (l2_reg(self.recgat.node_embeddings) + l2_reg(self.recgat) + l2_reg(self.edge_predictor))
+    self.log("val_l2reg_loss", l2_reg_loss)
     # loss = bpr_loss
     # + self.l2_reg
     # auroc = self.auroc_on_propensity(self.get_val_auroc_target(src_node, pos_trg_node)) # just pos_trg_node !
@@ -476,3 +478,45 @@ class BprTraining(pl.LightningModule):
     scores = self.forward(user_id.view(-1, 1), propensity_item_id)
     return tm.AUROC(task="binary")(scores, target_edge_index)
     # return torch.zeros((1,), device=device)  # TODO: implement AUROC calculation
+
+
+# OK: this is too hard
+# how to aggr aurocs from batches?
+
+# remove node_embeddings ?
+
+# not finished!
+def full_auroc(self, 
+              batch_size,
+               all_users, # tensor
+                 all_items, # tensor
+                 test_edge_index # tensor
+                 ):
+
+  n_users = len(all_users)
+  indices = np.random.permutation(n_users)
+  total = torch.zeros((1,), device=device)
+  for start in range(0, n_users, batch_size):
+    end = min(start + batch_size, n_users)
+    user_batch = all_users[indices[start:end]]
+    target = create_target(user_batch, all_items, test_edge_index)
+    scores = self.forward(user_batch.view(-1, len(all_items)), all_items.view(len(user_batch), -1))
+    auroc = tm.AUROC(task="binary")(scores, target)
+    total += auroc
+  
+
+  user_id = torch.arange(0, self.recgat.node_id_map.n_users, dtype=torch.long, device=device)  # all users
+  # repeat calculation from validation_step but for smaller item set so ignoring
+  scores = self.forward(user_id.view(-1, 1), propensity_item_id)
+  return tm.AUROC(task="binary")(scores, target_edge_index)
+
+# all ids
+def create_target(users, all_items, edge_index):
+  ind = { user_id : i for i, user_id in enumerate(users) }
+  target = torch.zeros((len(users), len(all_items)), dtype=torch.int, device=device) # (n_users, 300000)
+  for i in range(edge_index.shape[1]):
+    user_id = edge_index[0, i].item()
+    item = edge_index[1, i].item()
+    if user_id in ind:
+      target[ind[user_id], item] = 1
+  return target.to(device=device)
