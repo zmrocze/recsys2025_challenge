@@ -286,7 +286,7 @@ class BprLossLoader:
             size=(self.neg_samples * pos_indices.shape[0],), replace=True
           )
       else:
-        neg_trg_node_ind = np.random.choice(np.arange(0, pos_trg_node.shape(0)), size=(self.neg_samples * pos_indices.shape[0],), replace=True)
+        neg_trg_node_ind = np.random.choice(np.arange(0, pos_trg_node.shape[0]), size=(self.neg_samples * pos_indices.shape[0],), replace=True)
         neg_trg_node = pos_trg_node[neg_trg_node_ind]
       
       yield src_node.to(device=self.device), \
