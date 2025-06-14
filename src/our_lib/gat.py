@@ -475,11 +475,12 @@ def create_val_edge_batched(node_id_map, val_edge_index, auroc_batch_size, devic
   return val_edge_index_batched
 
 class BprTraining(pl.LightningModule):
-  def __init__(self, recgat, edge_predictor,
+  def __init__(self, recgat, edge_predictor, retain_grad=False,
     lr=0.001, l2_reg=0.01, val_edge_index=None, device=device, auroc_batch_size=256,
     # forward_gat_every_n=1, 
     patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
     super(BprTraining, self).__init__()
+    self.retain_grad = retain_grad
     self.patience = patience
     self.factor = factor
     self.lr_scheduler_monitor = lr_scheduler_monitor
@@ -543,7 +544,7 @@ class BprTraining(pl.LightningModule):
   #   optimizer.zero_grad()
 
   def backward(self, loss):
-    loss.backward(retain_graph=True)
+    loss.backward(retain_graph=self.retain_grad)
 
   def configure_optimizers(self):
     optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.l2_reg)
