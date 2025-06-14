@@ -542,6 +542,9 @@ class BprTraining(pl.LightningModule):
   #   # default
   #   optimizer.zero_grad()
 
+  def backward(self, loss):
+    loss.backward(retain_graph=True)
+
   def configure_optimizers(self):
     optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.l2_reg)
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
