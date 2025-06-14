@@ -75,6 +75,44 @@ class JustGAT(torch.nn.Module):
       edge_attr=edge_attr
     )
 
+class JustLightGCN(torch.nn.Module):
+
+  def __init__(self, n, embedding_dim=embedding_dim, device=device, a=1.0, type='normal', num_layers=2):
+    super(JustLightGCN, self).__init__()
+    self.embedding_dim = embedding_dim
+    self.n = n
+    self.node_embeddings = torch.nn.Embedding(self.n, embedding_dim, device=device)
+    # self.node_embeddings.weight.data.uniform_(-0.01, 0.01)
+    # self.target_embeddings = torch.nn.Embedding(M, embedding_dim, device=device)
+    # v2=True, 
+    # heads, concat, residual
+    self.gat = tg.nn.models.LightGCN(
+      num_nodes=self.n,
+      embedding_dim=self.embedding_dim,
+      num_layers=num_layers,
+      ).to(device)
+    self.a = a
+    self.type = type
+    self.reinit_weights(a=self.a, type=self.type)
+
+  def reinit_weights(self, a=1.0, type='normal'):
+    if type == 'normal':
+      self.node_embeddings.weight.data.normal_(0, a)
+    elif type == 'uniform':
+      self.node_embeddings.weight.data.uniform_(-a, a)
+    else:
+      raise ValueError(f"Unknown weight initialization type: {type}. Use 'normal' or 'uniform'.")
+    self.gat.reset_parameters()
+
+  def forward(self, edge_index, edge_weight=None, edge_attr=None):
+    return self.gat.forward(
+      x=self.node_embeddings.weight, 
+      edge_index=edge_index, 
+      edge_weight=edge_weight,
+      edge_attr=edge_attr
+    )
+
+
 def test_out():
   # Initialize the model
   model = JustGAT(10, embedding_dim=16, edge_dim=3)
@@ -88,18 +126,16 @@ def test_out():
     output = model.forward(edge_index, edge_weight=edge_weight, edge_attr=edge_attr) #  edge_attr=edge_attr
     print(f"Output shapes: {output.shape}")
 
-
-
-class RecGAT(JustGAT):
+class RecLightGCN(JustLightGCN):
   """
-    Wrapper over JustGAT that creates the graph from recommendation data.
+    Wrapper over JustLightGCN that creates the graph from recommendation data.
   """
   def __init__(self, users, items, **kwargs):
     self.node_id_map = NodeIdMap(users, items)
     
-    JustGAT.__init__(self, self.node_id_map.N, **kwargs)
+    JustLightGCN.__init__(self, self.node_id_map.N, **kwargs)
 
-    # self.gat = JustGAT(self.node_id_map.N, **kwargs).to(device)
+    # self.gat = JustLightGCN(self.node_id_map.N, **kwargs).to(device)
     self.edge_index = torch.empty((2, 0), dtype=torch.long, device=device)
     # self.edge_attr = torch.empty((0, self.model.edge_dim), dtype=torch.float, device=device)
     self.edge_attr = None
@@ -137,6 +173,72 @@ class RecGAT(JustGAT):
     user_ids = df.client_id.values
     item_ids = df.sku.values
     self.add_edges(user_ids, item_ids, edge_attr=edge_attr, edge_weight=edge_weight)
+  
+  def add_edges_from_user_category_df(self, df, edge_attr=None, edge_weight=None):
+    user_ids = df.client_id.values
+    item_ids = df.category.values
+    self.add_edges(user_ids, item_ids, edge_attr=edge_attr, edge_weight=edge_weight)
+    
+  def forward(self):
+    y = JustLightGCN.forward(self, edge_index=self.edge_index, edge_weight=self.edge_weight, edge_attr=self.edge_attr)
+    # split into user and item embeddings
+    user_embeddings = y[:self.node_id_map.n_users]
+    item_embeddings = y[self.node_id_map.n_users:]
+    return user_embeddings, item_embeddings
+
+
+class RecGAT(JustGAT):
+  """
+    Wrapper over JustGAT that creates the graph from recommendation data.
+  """
+  def __init__(self, users, items, **kwargs):
+    self.node_id_map = NodeIdMap(users, items)
+    
+    JustGAT.__init__(self, self.node_id_map.N, **kwargs)
+
+    # self.gat = JustGAT(self.node_id_map.N, **kwargs).to(device)
+    self.edge_index = torch.empty((2, 0), dtype=torch.long, device=device)
+    # self.edge_attr = torch.empty((0, self.model.edge_dim), dtype=torch.float, device=device)
+    self.edge_attr = None
+    # self.edge_weights = torch.empty((0, ), dtype=torch.float, device=device)
+    self.edge_weight = None
+
+  def add_edges(self, users, items, edge_attr=None, edge_weight=None):
+    edge_index = self.node_id_map.make_edges(users, items).to(device=device)
+    # edge_index = torch.concat((self.edge_index, edge_index), dim=1)
+    return self.add_edge_index(edge_index, edge_attr=edge_attr, edge_weight=edge_weight)
+
+  def add_edge_index(self, edge_index, edge_attr=None, edge_weight=None):
+    self.edge_index = torch.concat((self.edge_index, edge_index), dim=1)
+    if edge_attr is not None:
+      assert self.edge_dim is not None
+      self._init_edge_attr()
+      self.edge_attr = torch.concat((self.edge_attr, edge_attr))
+    else:
+      assert self.edge_dim is None
+    if edge_weight is not None:
+      self._init_edge_weight()
+      self.edge_weight = torch.concat((self.edge_weight, edge_weight))
+    self._assert_edge_assignment()
+
+  def _init_edge_attr(self):
+    if self.edge_attr is None: self.edge_attr = torch.empty((0, self.edge_dim), dtype=torch.float, device=device)
+  def _init_edge_weight(self):
+    if self.edge_weight is None: self.edge_weight = torch.empty((0, ), dtype=torch.float, device=device)
+  def _assert_edge_assignment(self):
+    if (self.edge_attr is not None and self.edge_index.shape[1] != self.edge_attr.shape[0]) or (self.edge_weight is not None and self.edge_index.shape[1] != self.edge_weight.shape[0]):
+      raise ValueError(f"Edge index, edge attr and edge weight must have the same number of edges.")
+
+  # assumes: df['client_id'] and df['sku'] are present
+  def add_edges_from_user_item_df(self, df, edge_attr=None, edge_weight=None):
+    user_ids = df.client_id.values
+    item_ids = df.sku.values
+    self.add_edges(user_ids, item_ids, edge_attr=edge_attr, edge_weight=edge_weight)
+  
+  def add_edges_from_user_category_df(self, df, edge_attr=None, edge_weight=None):
+    user_ids = df.client_id.values
+    item_ids = df.category.values
+    self.add_edges(user_ids, item_ids, edge_attr=edge_attr, edge_weight=edge_weight)
     
   def forward(self):
     y = JustGAT.forward(self, edge_index=self.edge_index, edge_weight=self.edge_weight, edge_attr=self.edge_attr)
@@ -172,13 +274,13 @@ class DotproductEdgePredictor(torch.nn.Module):
   def forward(self, user_emb, item_emb):
     """
       user_emb: (batch_size, emb_dim)
-      item_emb: (batch_size, emb_dim)
+      item_emb: (batch_size, sample_size, emb_dim)
       returns: (batch_size, )
     """
     user_proj = torch.matmul(user_emb, self.Ws)  # (batch_size, hidden_dim)
-    item_proj = torch.matmul(item_emb, self.Wt)  # (batch_size, hidden_dim)
+    item_proj = torch.matmul(item_emb, self.Wt)  # (batch_size, sample_size, hidden_dim)
     # compute similarity
-    return torch.sum(user_proj * item_proj, dim=1)  # (batch_size, )
+    return torch.sum(user_proj * item_proj, axis=len(item_proj.shape)-1)  # (batch_size, )
 
 
 # gives number which correlates to the edge being there or not
@@ -333,9 +435,48 @@ def create_target_from_edge_index(node_id_map, n_users, propensity_items, edge_i
       target[user_id, ind[item]] = 1
   return target.to(device=device)
 
+# to calculate AUROC we need a matrix (users, 100) of 1s and 0s whether edge is or isnt
+# we have list of edges. better do this once, not vectorized
+# all tensors with node id
+def create_batch_assoc_matrix(edge_index, users=None, items=None, device=device):
+  if users is None:
+    users = edge_index[0, :].unique()
+  if items is None:
+    items = edge_index[1, :].unique()
+
+  a = torch.zeros((users.shape[0], items.shape[0]), dtype=torch.int)
+
+  user_ind = {user.item(): i for i, user in enumerate(users)}
+  item_ind = {item.item(): i for i, item in enumerate(items)}
+
+  for i in range(edge_index.shape[1]):
+    user = edge_index[0, i].item()
+    item = edge_index[1, i].item()
+    if user in user_ind and item in item_ind:
+      a[user_ind[user], item_ind[item]] = 1
+
+  return a.to(device=device)
+
+import torchmetrics as tm
+
+# from torcheval.metrics import BinaryAUROC
+
+def create_val_edge_batched(node_id_map, val_edge_index, auroc_batch_size, device=device):
+  num_batches = int(node_id_map.n_users // auroc_batch_size + (node_id_map.n_users % auroc_batch_size > 0))
+  val_edge_index_batched = [None for _ in range(num_batches)]
+  # the point is to split val_edge_index into (uneven) batches of edges corresponding to batched user ids
+  for i, start in enumerate(range(0, node_id_map.n_users, auroc_batch_size)):
+    # assuming user id's go from 0 to n_users-1, then item ids
+    end = min(start + auroc_batch_size, node_id_map.n_users)
+    # batch_users = torch.arange(start, end, dtype=torch.long)
+    ind = torch.nonzero((start <= val_edge_index[0, :]) & (val_edge_index[0, :] < end) , as_tuple=False).to(device=device)
+    val_edge_index_batched[i] = val_edge_index[:, ind].squeeze(2).to(device=device)
+
+  return val_edge_index_batched
+
 class BprTraining(pl.LightningModule):
-  def __init__(self, recgat, edge_predictor, propensity_sku, 
-    lr=0.001, l2_reg=0.01, full_test_target=None, device=device, 
+  def __init__(self, recgat, edge_predictor,
+    lr=0.001, l2_reg=0.01, val_edge_index=None, device=device, auroc_batch_size=256,
     # forward_gat_every_n=1, 
     patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
     super(BprTraining, self).__init__()
@@ -343,16 +484,17 @@ class BprTraining(pl.LightningModule):
     self.factor = factor
     self.lr_scheduler_monitor = lr_scheduler_monitor
     self.recgat = recgat.to(device=device)
-    self._val_auroc_target = None
     self.edge_predictor = edge_predictor.to(device=device)
-    self.propensity_sku = propensity_sku
+    # self.propensity_sku = propensity_sku
     self.lr = lr
-    self.full_test_target = full_test_target
+    # self.full_test_target = full_test_target
     self._changed = True
     # self._forward_skipped_n = 0
     # self._first_forward = True
     self.l2_reg = l2_reg
     # self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
+    self.auroc_batch_size = auroc_batch_size
+    self.val_edge_index_batched = create_val_edge_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
 
   def on_save_checkpoint(self, checkpoint):
     checkpoint['my_node_id_map'] = self.recgat.node_id_map
@@ -371,19 +513,9 @@ class BprTraining(pl.LightningModule):
       user_emb, item_emb = self.recgat.forward()
       self._user_emb = user_emb
       self._item_emb = item_emb
+      self._changed = False
 
     return self._user_emb, self._item_emb
-
-  # calculate (based on val_loader) only first time its needed
-  def get_val_auroc_target(self, user_id, item_id):
-    if self._val_auroc_target is None:
-      edge_index = torch.stack((user_id, item_id), device=device)
-      self._val_auroc_target = create_target_from_edge_index(self.recgat.node_id_map, self.recgat.node_id_map.n_users, self.propensity_sku, edge_index)
-    return self._val_auroc_target
-    
-
-  def optimizer_step(self, *args, **kwargs):
-    return super().optimizer_step(*args, **kwargs)
 
   def training_step(self, batch, batch_idx):
     src_node, pos_trg_node, neg_trg_node = batch
@@ -429,7 +561,6 @@ class BprTraining(pl.LightningModule):
         "frequency": 1,
       }
     }
-
   
   def validation_step(self, batch, batch_idx):
     src_node, pos_trg_node, neg_trg_node = batch
@@ -438,20 +569,16 @@ class BprTraining(pl.LightningModule):
     # loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores, l2_r=self.l2_reg)
     # bpr_loss = loss_f(self.recgat, self.edge_predictor, pos_scores, neg_scores)
     loss = bpr_loss_f(pos_scores, neg_scores)
-    l2_reg_loss = (l2_reg(self.recgat.node_embeddings) + l2_reg(self.recgat) + l2_reg(self.edge_predictor))
-    self.log("val_l2reg_loss", l2_reg_loss)
-    # loss = bpr_loss
-    # + self.l2_reg
-    # auroc = self.auroc_on_propensity(self.get_val_auroc_target(src_node, pos_trg_node)) # just pos_trg_node !
-    
-    if self.full_test_target is not None:
-      full_auroc = self.auroc_on_propensity(self.full_test_target)
-      self.log("val_propensity_auroc", full_auroc)
 
     self.log("val_loss", loss)
-    # self.log("val_l2reg_loss", l2_loss)
-    # self.log("val_bpr_loss", bpr_loss)
     return loss
+
+  def on_validation_epoch_end(self):
+    if self.val_edge_index_batched is not None:
+      full_auroc = self.auroc()
+      self.log("val_auroc", full_auroc)
+
+    super(BprTraining, self).on_validation_epoch_end()
 
   # helpers
 
@@ -470,53 +597,24 @@ class BprTraining(pl.LightningModule):
 
   # metrics: 
 
-  # Auroc for users (defaul all) on given items (default all), given binary target from test (say 14 days into future)
-  def auroc_on_propensity(self, target_edge_index):
-    propensity_item_id = torch.tensor([ self.recgat.node_id_map.id_of_item[sku] for sku in self.propensity_sku ], dtype=torch.long, device=device)
-    user_id = torch.arange(0, self.recgat.node_id_map.n_users, dtype=torch.long, device=device)  # all users
-    # repeat calculation from validation_step but for smaller item set so ignoring
-    scores = self.forward(user_id.view(-1, 1), propensity_item_id)
-    return tm.AUROC(task="binary")(scores, target_edge_index)
-    # return torch.zeros((1,), device=device)  # TODO: implement AUROC calculation
+  def auroc(self):
+    # all_val_users, all_categories, val_edge_index_batched
+    all_categories = torch.arange(self.recgat.node_id_map.n_users, self.recgat.node_id_map.N, dtype=torch.long, device=self.device)
+    n_users = self.recgat.node_id_map.n_users
+    auroc_acc = tm.AUROC(task="binary")
+    
+    for i, start in enumerate(range(0, n_users, self.auroc_batch_size)):
+      # assuming user id's go from 0 to n_users-1, then item ids
+      end = min(start + self.auroc_batch_size, n_users)
+      batch_users = torch.arange(start, end, dtype=torch.long, device=self.device)
+      batch_edges = self.val_edge_index_batched[i] # i-th batch, !! careful
+      # create target matrix for this batch
+      target = create_batch_assoc_matrix(batch_edges, users=batch_users, items=all_categories, device=self.device)
+      # calculate scores
+      scores = self.forward(batch_users.view(-1, 1), all_categories.view(1, -1))
+      assert target.shape == scores.shape, f"Target shape {target.shape} does not match scores shape {scores.shape}"
+      # calculate AUROC
+      auroc_acc.update(scores, target)
 
-
-# OK: this is too hard
-# how to aggr aurocs from batches?
-
-# remove node_embeddings ?
-
-# not finished!
-def full_auroc(self, 
-              batch_size,
-               all_users, # tensor
-                 all_items, # tensor
-                 test_edge_index # tensor
-                 ):
-
-  n_users = len(all_users)
-  indices = np.random.permutation(n_users)
-  total = torch.zeros((1,), device=device)
-  for start in range(0, n_users, batch_size):
-    end = min(start + batch_size, n_users)
-    user_batch = all_users[indices[start:end]]
-    target = create_target(user_batch, all_items, test_edge_index)
-    scores = self.forward(user_batch.view(-1, len(all_items)), all_items.view(len(user_batch), -1))
-    auroc = tm.AUROC(task="binary")(scores, target)
-    total += auroc
-  
-
-  user_id = torch.arange(0, self.recgat.node_id_map.n_users, dtype=torch.long, device=device)  # all users
-  # repeat calculation from validation_step but for smaller item set so ignoring
-  scores = self.forward(user_id.view(-1, 1), propensity_item_id)
-  return tm.AUROC(task="binary")(scores, target_edge_index)
-
-# all ids
-def create_target(users, all_items, edge_index):
-  ind = { user_id : i for i, user_id in enumerate(users) }
-  target = torch.zeros((len(users), len(all_items)), dtype=torch.int, device=device) # (n_users, 300000)
-  for i in range(edge_index.shape[1]):
-    user_id = edge_index[0, i].item()
-    item = edge_index[1, i].item()
-    if user_id in ind:
-      target[ind[user_id], item] = 1
-  return target.to(device=device)
+    aur = auroc_acc.compute()
+    return aur
