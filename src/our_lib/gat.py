@@ -507,6 +507,7 @@ class BprTraining(pl.LightningModule):
     patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
     super(BprTraining, self).__init__()
     self.retain_grad = retain_grad
+    self.device = device
     self.patience = patience
     self.factor = factor
     self.lr_scheduler_monitor = lr_scheduler_monitor
@@ -522,7 +523,7 @@ class BprTraining(pl.LightningModule):
     # self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
     self.auroc_batch_size = auroc_batch_size
     self.val_edge_index_batched = create_val_edge_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
-    self.val_target_batched = create_val_target_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
+    # self.val_target_batched = create_val_target_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
 
   def on_save_checkpoint(self, checkpoint):
     checkpoint['my_node_id_map'] = self.recgat.node_id_map
