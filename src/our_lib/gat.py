@@ -110,7 +110,8 @@ class JustLightGCN(torch.nn.Module):
 
   def forward(self, edge_index, edge_weight=None, edge_attr=None):
     return self.gat.forward(
-      x=self.node_embeddings.weight, 
+      # not needed because self.gat (really LightGCN) keeps its embeddings
+      # x=self.node_embeddings.weight, 
       edge_index=edge_index, 
       edge_weight=edge_weight,
       edge_attr=edge_attr
