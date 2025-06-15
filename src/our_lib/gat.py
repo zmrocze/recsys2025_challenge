@@ -474,7 +474,7 @@ def create_val_edge_batched(node_id_map, val_edge_index, auroc_batch_size, devic
     batch_users = {u.item(): i for i, u in enumerate(val_users[start:end])}
     # ind = torch.nonzero((start <= val_edge_index[0, :]) & (val_edge_index[0, :] < end) , as_tuple=False).to(device=device)
     # val_edge_index_batched[i] = val_edge_index[:, ind].squeeze(2).to(device=device)
-    batch_target = torch.zeros((start-end, node_id_map.n_items), dtype=torch.long, device=device)
+    batch_target = torch.zeros((end-start, node_id_map.n_items), dtype=torch.long, device=device)
     for j in range(val_edge_index.shape[1]):
       user = val_edge_index[0, j].item()
       item = val_edge_index[1, j].item()
@@ -536,7 +536,7 @@ class BprTraining(pl.LightningModule):
     self.val_edge_index_batched = val_edge_index_batched
     self.val_users = val_edge_index[0, :].unique() # has to match create_val_edge_batched
     # "edges "sorted" in order of batches of val_users"
-    if val_edge_index is not None and self.val_edge_index_batched is None:
+    if False and val_edge_index is not None and self.val_edge_index_batched is None:
       self.val_edge_index_batched = create_val_edge_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=device)
     # self.val_target_batched = create_val_target_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
 
