@@ -93,7 +93,7 @@ class JustLightGCN(torch.nn.Module):
       ).to(device)
     self.a = a
     self.type = type
-    self.reinit_weights(a=self.a, type=self.type)
+    # self.reinit_weights(a=self.a, type=self.type)
 
   @property
   def node_embeddings(self):
