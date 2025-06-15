@@ -108,14 +108,11 @@ class JustLightGCN(torch.nn.Module):
       raise ValueError(f"Unknown weight initialization type: {type}. Use 'normal' or 'uniform'.")
     self.gat.reset_parameters()
 
-  def forward(self, edge_index, edge_weight=None, edge_attr=None):
-    return self.gat.forward(
-      # not needed because self.gat (really LightGCN) keeps its embeddings
-      # x=self.node_embeddings.weight, 
+  def forward(self, edge_index, edge_weight=None):
+    return self.gat.get_embedding(
       edge_index=edge_index,
       edge_weight=edge_weight,
     )
-
 
 def test_out():
   # Initialize the model
