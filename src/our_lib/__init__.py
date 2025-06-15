@@ -4,7 +4,7 @@ from recsys_cmds import split_data, create_baseline_embeddings, contest_training
 
 from recsys_data import RecSysData
 
-from gat import create_val_edge_batched, NodeIdMap, RecLightGCN, JustLightGCN, JustGAT, RecGAT, DotproductEdgePredictor, LinearEdgePredictor, BprLossLoader, test_out, l2_reg, train_test_split_pos_edges, int_tensor, unique_edges, loss_f, create_target_from_edge_index, BprTraining, device
+from gat import create_val_edge_batched, NodeIdMap, RecLightGCN, JustLightGCN, JustGAT, RecGAT, DotproductEdgePredictor, LinearEdgePredictor, BprLossLoader, test_out, l2_reg, train_test_split_pos_edges, int_tensor, unique_edges, loss_f, BprTraining, device
 
 import pandas as pd
 import numpy as np
