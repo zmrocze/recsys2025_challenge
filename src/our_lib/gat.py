@@ -462,26 +462,24 @@ import torchmetrics as tm
 # from torcheval.metrics import BinaryAUROC
 
 def create_val_edge_batched(node_id_map, val_edge_index, auroc_batch_size, device=device):
-  num_batches = int(node_id_map.n_users // auroc_batch_size + (node_id_map.n_users % auroc_batch_size > 0))
-  val_edge_index_batched = [None for _ in range(num_batches)]
   val_users = val_edge_index[0, :].unique()
-  n_users = val_users.shape[0] 
+  n_users = val_users.shape[0]
+  num_batches = int(n_users // auroc_batch_size + (n_users % auroc_batch_size > 0))
+  val_edge_index_batched = [None for _ in range(num_batches)]
   # the point is to split val_edge_index into (uneven) batches of edges corresponding to batched user ids
   for i, start in enumerate(range(0, n_users, auroc_batch_size)):
-    # assuming user id's go from 0 to n_users-1, then item ids
     end = min(start + auroc_batch_size, node_id_map.n_users)
-    # batch_users = torch.arange(start, end, dtype=torch.long)
-    batch_users = {u.item(): i for i, u in enumerate(val_users[start:end])}
-    # ind = torch.nonzero((start <= val_edge_index[0, :]) & (val_edge_index[0, :] < end) , as_tuple=False).to(device=device)
-    # val_edge_index_batched[i] = val_edge_index[:, ind].squeeze(2).to(device=device)
-    batch_target = torch.zeros((end-start, node_id_map.n_items), dtype=torch.long, device=device)
+    batch_users = {u.item() for u in val_users[start:end]}
+    batch_edges_x = []
+    batch_edges_y = []
     for j in range(val_edge_index.shape[1]):
       user = val_edge_index[0, j].item()
       item = val_edge_index[1, j].item()
       if user in batch_users:
-        item_ind = item - node_id_map.n_users
-        batch_target[batch_users[user], item_ind] = 1
-    val_edge_index_batched[i] = batch_target.to(device=device)
+        batch_edges_x.append(user)
+        batch_edges_y.append(item)
+    batch_edges = torch.tensor([batch_edges_x, batch_edges_y], dtype=torch.long, device=device)
+    val_edge_index_batched[i] = batch_edges
   
   return val_edge_index_batched
 
@@ -508,8 +506,7 @@ def create_val_target_batched(node_id_map, val_edge_index, auroc_batch_size, dev
 
   return val_edge_index_batched
 
-  
-
+from sklearn.metrics import roc_auc_score
 
 class BprTraining(pl.LightningModule):
   def __init__(self, recgat, edge_predictor, retain_grad=False,
@@ -536,8 +533,8 @@ class BprTraining(pl.LightningModule):
     self.val_edge_index_batched = val_edge_index_batched
     self.val_users = val_edge_index[0, :].unique() # has to match create_val_edge_batched
     # "edges "sorted" in order of batches of val_users"
-    if False and val_edge_index is not None and self.val_edge_index_batched is None:
-      self.val_edge_index_batched = create_val_edge_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=device)
+    if val_edge_index is not None and self.val_edge_index_batched is None:
+      self.val_edge_index_batched = create_val_edge_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device='cpu')
     # self.val_target_batched = create_val_target_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
 
   def on_save_checkpoint(self, checkpoint):
@@ -622,7 +619,7 @@ class BprTraining(pl.LightningModule):
 
   def on_validation_epoch_end(self):
     if self.val_edge_index_batched is not None:
-      full_auroc = self.auroc()
+      full_auroc = self.auroc_og()
       self.log("val_auroc", full_auroc)
 
     super(BprTraining, self).on_validation_epoch_end()
@@ -647,26 +644,25 @@ class BprTraining(pl.LightningModule):
   # averaged over users.
   # Corresponds to probability that a randomly selected user is predicted to buy item he actually bought over one he didn't.
   def auroc_og(self):
-    # all_val_users, all_categories, val_edge_index_batched
     all_categories = torch.arange(self.recgat.node_id_map.n_users, self.recgat.node_id_map.N, dtype=torch.long, device=self.device)
-    n_users = self.recgat.node_id_map.n_users
-    auroc_acc = tm.AUROC(task="binary")
+    # n_users = self.recgat.node_id_map.n_users
+    n_users = self.val_users.shape[0]
+    roc_total = 0.0
 
     for i, start in enumerate(range(0, n_users, self.auroc_batch_size)):
       # assuming user id's go from 0 to n_users-1, then item ids
       end = min(start + self.auroc_batch_size, n_users)
-      batch_users = torch.arange(start, end, dtype=torch.long, device=self.device)
+      batch_users_ind = torch.arange(start, end, dtype=torch.long, device='cpu')
+      batch_users = self.val_users[batch_users_ind]
       batch_edges = self.val_edge_index_batched[i] # i-th batch, !! careful
       # create target matrix for this batch
-      target = create_batch_assoc_matrix(batch_edges, users=batch_users, items=all_categories, device=self.device)
+      target = create_batch_assoc_matrix(batch_edges, users=batch_users, items=all_categories, device='cpu')
       # calculate scores
-      scores = self.forward(batch_users.view(-1, 1), all_categories.view(1, -1))
-      assert target.shape == scores.shape, f"Target shape {target.shape} does not match scores shape {scores.shape}"
-      print(f"Batch {i}: target shape {target.device}, scores shape {scores.device}")
-      # calculate AUROC
-      # auroc_acc.update(scores, target)
-      roc = auroc_acc(scores, target)
-      roc_total += roc
+      scores = self.forward(batch_users.to(device=self.device).view(-1, 1), all_categories.view(1, -1))
+      # assert target.shape == scores.shape, f"Target shape {target.shape} does not match scores shape {scores.shape}"
+
+      roc = roc_auc_score(target, scores.detach().cpu(), average='samples')
+      roc_total += roc * (end-start) # !
 
     roc_total /= n_users
     return roc_total

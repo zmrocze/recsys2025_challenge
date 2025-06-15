@@ -5,6 +5,7 @@ matplotlib
 numpy 2.1
 wandb
 pandas 2.2.3
+sklearn
 pytorch
 pytorch-lightning
 pyg-lib
