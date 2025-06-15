@@ -81,7 +81,7 @@ class JustLightGCN(torch.nn.Module):
     super(JustLightGCN, self).__init__()
     self.embedding_dim = embedding_dim
     self.n = n
-    self.node_embeddings = torch.nn.Embedding(self.n, embedding_dim, device=device)
+    # self.node_embeddings = torch.nn.Embedding(self.n, embedding_dim, device=device)
     # self.node_embeddings.weight.data.uniform_(-0.01, 0.01)
     # self.target_embeddings = torch.nn.Embedding(M, embedding_dim, device=device)
     # v2=True, 
@@ -94,6 +94,10 @@ class JustLightGCN(torch.nn.Module):
     self.a = a
     self.type = type
     self.reinit_weights(a=self.a, type=self.type)
+
+  @property
+  def node_embeddings(self):
+    return self.gat.embedding
 
   def reinit_weights(self, a=1.0, type='normal'):
     if type == 'normal':
