@@ -137,50 +137,28 @@ class RecLightGCN(JustLightGCN):
 
     # self.gat = JustLightGCN(self.node_id_map.N, **kwargs).to(device)
     self.edge_index = torch.empty((2, 0), dtype=torch.long, device=device)
-    # self.edge_attr = torch.empty((0, self.model.edge_dim), dtype=torch.float, device=device)
-    self.edge_attr = None
-    # self.edge_weights = torch.empty((0, ), dtype=torch.float, device=device)
-    self.edge_weight = None
 
-  def add_edges(self, users, items, edge_attr=None, edge_weight=None):
+  def add_edges(self, users, items):
     edge_index = self.node_id_map.make_edges(users, items).to(device=device)
     edge_index = torch.concat((self.edge_index, edge_index), dim=1)
-    return self.add_edge_index(edge_index, edge_attr=edge_attr, edge_weight=edge_weight)
+    return self.add_edge_index(edge_index)
 
-  def add_edge_index(self, edge_index, edge_attr=None, edge_weight=None):
+  def add_edge_index(self, edge_index):
     self.edge_index = torch.concat((self.edge_index, edge_index), dim=1)
-    if edge_attr is not None:
-      assert self.edge_dim is not None
-      self._init_edge_attr()
-      self.edge_attr = torch.concat((self.edge_attr, edge_attr))
-    else:
-      assert self.edge_dim is None
-    if edge_weight is not None:
-      self._init_edge_weight()
-      self.edge_weight = torch.concat((self.edge_weight, edge_weight))
-    self._assert_edge_assignment()
-
-  def _init_edge_attr(self):
-    if self.edge_attr is None: self.edge_attr = torch.empty((0, self.edge_dim), dtype=torch.float, device=device)
-  def _init_edge_weight(self):
-    if self.edge_weight is None: self.edge_weight = torch.empty((0, ), dtype=torch.float, device=device)
-  def _assert_edge_assignment(self):
-    if (self.edge_attr is not None and self.edge_index.shape[1] != self.edge_attr.shape[0]) or (self.edge_weight is not None and self.edge_index.shape[1] != self.edge_weight.shape[0]):
-      raise ValueError(f"Edge index, edge attr and edge weight must have the same number of edges.")
 
   # assumes: df['client_id'] and df['sku'] are present
-  def add_edges_from_user_item_df(self, df, edge_attr=None, edge_weight=None):
+  def add_edges_from_user_item_df(self, df):
     user_ids = df.client_id.values
     item_ids = df.sku.values
-    self.add_edges(user_ids, item_ids, edge_attr=edge_attr, edge_weight=edge_weight)
+    self.add_edges(user_ids, item_ids)
   
-  def add_edges_from_user_category_df(self, df, edge_attr=None, edge_weight=None):
+  def add_edges_from_user_category_df(self, df):
     user_ids = df.client_id.values
     item_ids = df.category.values
-    self.add_edges(user_ids, item_ids, edge_attr=edge_attr, edge_weight=edge_weight)
+    self.add_edges(user_ids, item_ids)
     
   def forward(self):
-    y = JustLightGCN.forward(self, edge_index=self.edge_index, edge_weight=self.edge_weight, edge_attr=self.edge_attr)
+    y = JustLightGCN.forward(self, edge_index=self.edge_index)
     # split into user and item embeddings
     user_embeddings = y[:self.node_id_map.n_users]
     item_embeddings = y[self.node_id_map.n_users:]
