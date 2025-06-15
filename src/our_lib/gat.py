@@ -507,7 +507,6 @@ class BprTraining(pl.LightningModule):
     patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
     super(BprTraining, self).__init__()
     self.retain_grad = retain_grad
-    self.device = device
     self.patience = patience
     self.factor = factor
     self.lr_scheduler_monitor = lr_scheduler_monitor
