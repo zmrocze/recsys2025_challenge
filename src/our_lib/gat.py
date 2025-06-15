@@ -250,8 +250,8 @@ class DotproductEdgePredictor(torch.nn.Module):
     super(DotproductEdgePredictor, self).__init__()
     self.Ws = torch.nn.Parameter(torch.Tensor(emb_dim, emb_dim)).to(device=device)
     self.Wt = torch.nn.Parameter(torch.Tensor(emb_dim, emb_dim)).to(device=device)
-    self.Ws.xavier_uniform_()
-    self.Wt.xavier_uniform_()
+    torch.nn.init.xavier_uniform_(self.Ws)
+    torch.nn.init.xavier_uniform_(self.Wt)
     
   def forward(self, user_emb, item_emb):
     """
