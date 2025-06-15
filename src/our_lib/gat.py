@@ -444,7 +444,7 @@ def create_batch_assoc_matrix(edge_index, users=None, items=None, device=device)
   if items is None:
     items = edge_index[1, :].unique()
 
-  a = torch.zeros((users.shape[0], items.shape[0]), dtype=torch.int)
+  a = torch.zeros((users.shape[0], items.shape[0]), dtype=torch.int).to(device=device)
 
   user_ind = {user.item(): i for i, user in enumerate(users)}
   item_ind = {item.item(): i for i, item in enumerate(items)}
@@ -646,6 +646,7 @@ class BprTraining(pl.LightningModule):
       # calculate scores
       scores = self.forward(batch_users.view(-1, 1), all_categories.view(1, -1))
       assert target.shape == scores.shape, f"Target shape {target.shape} does not match scores shape {scores.shape}"
+      print(f"Batch {i}: target shape {target.device}, scores shape {scores.device}")
       # calculate AUROC
       # auroc_acc.update(scores, target)
       roc = auroc_acc(scores, target)
