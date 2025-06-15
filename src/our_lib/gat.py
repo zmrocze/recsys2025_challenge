@@ -93,7 +93,7 @@ class JustLightGCN(torch.nn.Module):
       ).to(device)
     self.a = a
     self.type = type
-    self.gat.reset_parameters(self)
+    self.gat.reset_parameters()
     # self.reinit_weights(a=self.a, type=self.type)
 
   @property
