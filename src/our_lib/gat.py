@@ -464,18 +464,29 @@ import torchmetrics as tm
 def create_val_edge_batched(node_id_map, val_edge_index, auroc_batch_size, device=device):
   num_batches = int(node_id_map.n_users // auroc_batch_size + (node_id_map.n_users % auroc_batch_size > 0))
   val_edge_index_batched = [None for _ in range(num_batches)]
+  val_users = val_edge_index[0, :].unique()
+  n_users = val_users.shape[0] 
   # the point is to split val_edge_index into (uneven) batches of edges corresponding to batched user ids
-  for i, start in enumerate(range(0, node_id_map.n_users, auroc_batch_size)):
+  for i, start in enumerate(range(0, n_users, auroc_batch_size)):
     # assuming user id's go from 0 to n_users-1, then item ids
     end = min(start + auroc_batch_size, node_id_map.n_users)
     # batch_users = torch.arange(start, end, dtype=torch.long)
-    ind = torch.nonzero((start <= val_edge_index[0, :]) & (val_edge_index[0, :] < end) , as_tuple=False).to(device=device)
-    val_edge_index_batched[i] = val_edge_index[:, ind].squeeze(2).to(device=device)
-
+    batch_users = {u.item(): i for i, u in enumerate(val_users[start:end])}
+    # ind = torch.nonzero((start <= val_edge_index[0, :]) & (val_edge_index[0, :] < end) , as_tuple=False).to(device=device)
+    # val_edge_index_batched[i] = val_edge_index[:, ind].squeeze(2).to(device=device)
+    batch_target = torch.zeros((start-end, node_id_map.n_items), dtype=torch.long, device=device)
+    for j in range(val_edge_index.shape[1]):
+      user = val_edge_index[0, j].item()
+      item = val_edge_index[1, j].item()
+      if user in batch_users:
+        item_ind = item - node_id_map.n_users
+        batch_target[batch_users[user], item_ind] = 1
+    val_edge_index_batched[i] = batch_target.to(device=device)
+  
   return val_edge_index_batched
 
 def create_val_target_batched(node_id_map, val_edge_index, auroc_batch_size, device=device):
-
+  raise Exception("What about the fact that items have indices going n_users..N-1?")
   num_batches = int(node_id_map.n_users // auroc_batch_size + (node_id_map.n_users % auroc_batch_size > 0))
   val_edge_index_batched = [None for _ in range(num_batches)]
   # the point is to split val_edge_index into (uneven) batches of edges corresponding to batched user ids
@@ -504,6 +515,7 @@ class BprTraining(pl.LightningModule):
   def __init__(self, recgat, edge_predictor, retain_grad=False,
     lr=0.001, l2_reg=0.01, val_edge_index=None, device=device, auroc_batch_size=256,
     # forward_gat_every_n=1, 
+    val_edge_index_batched=None,
     patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
     super(BprTraining, self).__init__()
     self.retain_grad = retain_grad
@@ -521,7 +533,11 @@ class BprTraining(pl.LightningModule):
     self.l2_reg = l2_reg
     # self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
     self.auroc_batch_size = auroc_batch_size
-    self.val_edge_index_batched = create_val_edge_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
+    self.val_edge_index_batched = val_edge_index_batched
+    self.val_users = val_edge_index[0, :].unique() # has to match create_val_edge_batched
+    # "edges "sorted" in order of batches of val_users"
+    if val_edge_index is not None and self.val_edge_index_batched is None:
+      self.val_edge_index_batched = create_val_edge_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=device)
     # self.val_target_batched = create_val_target_batched(self.recgat.node_id_map, val_edge_index, self.auroc_batch_size, device=self.device) if val_edge_index is not None else None
 
   def on_save_checkpoint(self, checkpoint):
