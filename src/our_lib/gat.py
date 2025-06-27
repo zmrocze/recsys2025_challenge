@@ -458,7 +458,9 @@ class BprTraining(pl.LightningModule):
     lr=0.001, l2_reg=0.01, val_edge_index=None, device=device, auroc_batch_size=256,
     # forward_gat_every_n=1, 
     val_edge_index_batched=None,
-    patience=5, factor=0.5, lr_scheduler_monitor="train_loss"):
+    patience=5, factor=0.5, lr_scheduler_monitor="train_loss", 
+    threshold=1e-4, cooldown = 10,
+    ):
     super(BprTraining, self).__init__()
     self.retain_grad = retain_grad
     self.patience = patience
@@ -473,6 +475,8 @@ class BprTraining(pl.LightningModule):
     # self._forward_skipped_n = 0
     # self._first_forward = True
     self.l2_reg = l2_reg
+    self.threshold = threshold
+    self.cooldown = cooldown
     # self.forward_gat_every_n = forward_gat_every_n # 1 means recalculate every time. n>1 means recalculate after n backward passes
     self.auroc_batch_size = auroc_batch_size
     self.val_edge_index_batched = val_edge_index_batched
@@ -537,7 +541,8 @@ class BprTraining(pl.LightningModule):
       optimizer=optimizer,
       patience=self.patience,
       factor=self.factor,
-      cooldown=2,
+      threshold=self.threshold,
+      cooldown=self.cooldown,
       verbose=True,
     )
     return {
