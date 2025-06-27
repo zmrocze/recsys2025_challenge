@@ -561,14 +561,6 @@ class BprTraining(pl.LightningModule):
 
     self.log("val_loss", loss)
     return loss
-
-  def on_validation_epoch_end(self):
-    if self.val_edge_index_batched is not None:
-      full_auroc = self.auroc_og()
-      self.log("val_auroc", full_auroc)
-
-    super(BprTraining, self).on_validation_epoch_end()
-
   # helpers
 
   def reinit_weights(self, a=1.0, type='normal'):
