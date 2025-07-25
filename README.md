@@ -1,18 +1,20 @@
 
 # Recsys2025
 
-Link do konkursu:
+Contest links:
 
  - https://github.com/Synerise/recsys2025
  - https://recsys.synerise.com/#challenge2025
 
-## Zawartość
+## Repository content
 
-Głowne wyniki znajdują się w notebooku `src/recsys2025_wyniki.ipynb`, przeznaczonym do wykonania w google colab.
-Notebook łączy się z google drive i oczekuje tam folderu `ubc_data_relevant_splitted` z danymi po processingu, gdy dojdzie do treningu to pyta o token do W&B.
+Slides used for project presentation: `adm_recsys2025.pdf`.
 
-Pozostałe notebooki obliczają eksploracyjne statystyki.
+Training in `src/recsys2025_wyniki.ipynb`, meant to be executed in google colab.
+Notebook connects with google drive where it expects `ubc_data_relevant_splitted` directory with preprocessed data, later at training prompts for W&B token.
 
-Kod modeli znajduje się w `src/our_lib/gat.py`.
+Remaining notebooks perform data exploration and processing.
 
-Udostępniamy też finalne `scores` i `embeds`.
+Model code in `src/our_lib/gat.py`.
+
+Sharing also final `scores` and `embeds`.
