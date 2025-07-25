@@ -14,9 +14,6 @@ let
       micromamba create --yes -q -n my-mamba-environment
       micromamba activate my-mamba-environment
       micromamba install --yes -f micromamba_conf.txt -c conda-forge
-      # micromamba install --yes -f micromamba_conf_2.txt -c conda-forge
-      # micromamba install --yes -f micromamba_conf_3.txt -c conda-forge
-      micromamba install --yes -f micromamba_conf_4.txt -c conda-forge
       set +e
     '';
 

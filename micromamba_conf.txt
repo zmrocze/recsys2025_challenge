@@ -9,3 +9,10 @@ scikit-learn
 pytorch
 pytorch-lightning
 pyg-lib
+torchdata
+torchmetrics
+tqdm
+neptune
+rich
+pyarrow
+torch-geometric
